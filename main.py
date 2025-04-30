@@ -108,7 +108,7 @@ def train(model, train_loader, test_loader, criterion, optimizer, epochs=10):
         
         print(f'Epoch {epoch+1}/{epochs} | Train Loss: {train_loss:.4f}')
         print(f'Val Acc: {val_acc:.2f}% | Train Acc: {train_acc:.2f}%')
-        print(f'Best Val Acc: {best_val_acc:.2f}% | Best Val Acc: {best_train_acc:.2f}%')
+        print(f'Best Val Acc: {best_val_acc:.2f}% | Best Train Acc: {best_train_acc:.2f}%')
         print('-' * 50)
     
     return train_losses, val_accuracies
@@ -141,7 +141,7 @@ train_losses, val_accuracies = train(
     test_loader, 
     criterion, 
     optimizer, 
-    epochs=100
+    epochs=200
 )
 
 plt.figure(figsize=(12, 5))
@@ -156,4 +156,8 @@ plt.plot(val_accuracies, label='Validation Accuracy')
 plt.title('Validation Accuracy')
 plt.xlabel('Epoch')
 plt.legend()
+
+# Сохраняем в файл
+plt.savefig('training_metrics.png', dpi=300, bbox_inches='tight') 
+
 plt.show()
