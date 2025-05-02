@@ -3,16 +3,19 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms, datasets
+from torchvision.utils import make_grid
 import matplotlib.pyplot as plt
 from PIL import Image
 import random
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
 
 from CustomCNN import CustomCNN
 
 # 1. Подготовка модели
-model = CustomCNN(num_classes=10) 
+model = CustomCNN(num_classes=5) 
 
-# 2. Подготовка данных (пример для CIFAR-10)
+# 2. Подготовка данных
 def random_pixelate(img):
     """Случайная пикселизация: уменьшение и обратное увеличение"""
     # Случайный выбор размера уменьшения (от 8x8 до 64x64)
@@ -20,7 +23,6 @@ def random_pixelate(img):
     return img.resize((downscale, downscale), Image.NEAREST).resize((128, 128), Image.NEAREST)
 
 transform = transforms.Compose([
-    # 1. Стандартные аугментации (на полном размере)
     transforms.RandomRotation(degrees=15),
     #transforms.RandomAffine(degrees=30, translate=(0.1, 0.1)),  # Случайные аффинные преобразования
     #transforms.RandomPerspective(distortion_scale=0.3, p=0.5),  # Перспективные искажения
@@ -31,10 +33,10 @@ transform = transforms.Compose([
     #transforms.RandomErasing(p=0.5, scale=(0.02, 0.1), ratio=(0.3, 3.3)),  # Случайное "стирание"
     
     
-    # 2. Случайная пикселизация
+    # Случайная пикселизация
     transforms.Lambda(random_pixelate),
     
-    # 3. Гарантированный ресайз и конвертация
+    # Гарантированный ресайз и конвертация
     transforms.Resize((128, 128)),  # На случай если входные размеры отличаются
     transforms.ToTensor(),
     transforms.RandomErasing(p=0.1, scale=(0.02, 0.1)),
@@ -42,7 +44,7 @@ transform = transforms.Compose([
                        std=[0.229, 0.224, 0.225])
 ])
 
-# Загрузка данных из ваших папок
+# Загрузка данных из папок
 train_data = datasets.ImageFolder(
     root='./data/train',  # Путь к папке train
     transform=transform
@@ -107,7 +109,7 @@ def train(model, train_loader, test_loader, criterion, optimizer, epochs=10):
             torch.save(model.state_dict(), 'best_model.pth')
         
         print(f'Epoch {epoch+1}/{epochs} | Train Loss: {train_loss:.4f}')
-        print(f'Val Acc: {val_acc:.2f}% | Train Acc: {train_acc:.2f}%')
+        print(f'Curr Val Acc: {val_acc:.2f}% | Curr Train Acc: {train_acc:.2f}%')
         print(f'Best Val Acc: {best_val_acc:.2f}% | Best Train Acc: {best_train_acc:.2f}%')
         print('-' * 50)
     
@@ -134,16 +136,97 @@ def evaluate(model, test_loader, criterion):
     accuracy = 100 * correct / total
     return accuracy
 
-# 6. Запуск обучения
-train_losses, val_accuracies = train(
-    model, 
-    train_loader, 
-    test_loader, 
-    criterion, 
-    optimizer, 
-    epochs=200
-)
+def plot_confusion_matrix(model, dataloader, class_names):
+    model.eval()
+    all_preds = []
+    all_labels = []
+    
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            outputs = model(inputs.to(device))
+            _, preds = torch.max(outputs, 1)
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.numpy())
+    
+    cm = confusion_matrix(all_labels, all_preds)
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=class_names,
+                yticklabels=class_names)
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.title('Confusion Matrix')
+    plt.savefig('confusion_matrix.png', bbox_inches='tight', dpi=200)
+    plt.close()
 
+def plot_image_confusion_matrix(model, test_loader, class_names, n_samples=3):
+    model.eval()
+    n_classes = len(class_names)
+    fig, axes = plt.subplots(n_classes, n_classes, figsize=(15, 15))
+    fig.subplots_adjust(hspace=0.5, wspace=0.3)
+    
+    # Инициализация словаря для примеров
+    examples = {i: {j: [] for j in range(n_classes)} for i in range(n_classes)}
+    
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images = images.to(device)
+            outputs = model(images)
+            preds = outputs.argmax(dim=1)
+            
+            # Конвертируем тензоры в числа
+            true_labels = labels.cpu().numpy()
+            pred_labels = preds.cpu().numpy()
+            
+            for img, true, pred in zip(images, true_labels, pred_labels):
+                if len(examples[true][pred]) < n_samples:
+                    examples[true][pred].append(img.cpu())
+    
+    # Отрисовка
+    for i in range(n_classes):
+        for j in range(n_classes):
+            ax = axes[i, j]
+            ax.axis('off')
+            
+            # Цвет фона
+            bg_color = '#ddffdd' if i == j else '#ffdddd'
+            ax.set_facecolor(bg_color)
+            
+            # Добавление изображений
+            if examples[i][j]:
+                grid = make_grid(examples[i][j], nrow=1, pad_value=1)
+                img_to_show = grid.permute(1, 2, 0).numpy()
+                img_to_show = (img_to_show - img_to_show.min()) / (img_to_show.max() - img_to_show.min())  # Нормализация к [0,1]
+                ax.imshow(img_to_show)
+            
+            # Подписи осей
+            if i == n_classes-1:
+                ax.set_xlabel(f'Pred: {class_names[j]}', fontsize=9)
+            if j == 0:
+                ax.set_ylabel(f'True: {class_names[i]}', fontsize=9)
+    
+    plt.savefig('visual_confusion_matrix.png', bbox_inches='tight', dpi=150)
+    plt.close()
+
+# 6. Запуск обучения
+if True:
+    train_losses, val_accuracies = train(
+        model, 
+        train_loader, 
+        test_loader, 
+        criterion, 
+        optimizer, 
+        epochs=100
+    )
+
+print("Классы в данных:", len(test_data.classes), test_data.classes)
+print("Выходов у модели:", model.fc.out_features)  # Для CNN
+#print(model) 
+
+plot_confusion_matrix(model, test_loader, test_data.classes)
+plot_image_confusion_matrix(model, test_loader, test_data.classes)
+
+# 7. Метрики обучения
 plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
 plt.plot(train_losses, label='Train Loss')
