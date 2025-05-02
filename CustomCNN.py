@@ -59,3 +59,52 @@ class CustomCNN(nn.Module):
         x = self.dropout(x)
         x = self.fc(x)               # [batch, num_classes]
         return x
+    
+
+
+class EfficientCNN(nn.Module):
+    def __init__(self, num_classes=5):  # По умолчанию 5 классов
+        super().__init__()
+        
+        def conv_block(in_c, out_c, pool=True):
+            layers = [
+                nn.Conv2d(in_c, out_c, kernel_size=3, padding=1),
+                nn.BatchNorm2d(out_c),
+                nn.ReLU(inplace=True)  # Добавил inplace для экономии памяти
+            ]
+            if pool:
+                layers.append(nn.MaxPool2d(2, 2))
+            return nn.Sequential(*layers)
+        
+        # Оптимизированная структура
+        self.conv0 = conv_block(3, 64, pool=False)     # [3,128,128] → [64,128,128]
+        self.block1 = conv_block(64, 64)               # [64,64,64]
+        self.block2 = conv_block(64, 128)              # [128,32,32]
+        self.block3 = conv_block(128, 256)             # [256,16,16]
+        self.block4 = conv_block(256, 512)             # [512,8,8]
+        
+        # Финальные слои
+        self.final_conv = nn.Sequential(
+            conv_block(512, 512),                      # [512,4,4]
+            conv_block(512, 512, pool=False)           # [512,4,4]
+        )
+        
+        # Адаптивный пулинг
+        self.adaptive_pool = nn.AdaptiveAvgPool2d(1)
+        
+        # Классификатор (теперь с явным доступом к Linear)
+        self.dropout = nn.Dropout(0.2)  # Вынесен отдельно для гибкости
+        self.fc = nn.Linear(512, num_classes)  # Чистый Linear слой
+    
+    def forward(self, x):
+        x = self.conv0(x)
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.final_conv(x)
+        x = self.adaptive_pool(x)
+        x = torch.flatten(x, 1)
+        x = self.dropout(x)
+        x = self.fc(x)
+        return x

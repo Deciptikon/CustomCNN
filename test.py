@@ -5,17 +5,22 @@ import torch
 from torchvision import transforms
 from PIL import Image
 
-from CustomCNN import CustomCNN
+from CustomCNN import CustomCNN, EfficientCNN
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 COLOR_BORDER = (0, 0, 0)
 W_BORDER = 3
+PADDING = 30
 
 """Настройки нейосети"""
 class_names = ['airplane', 'bird', 'drone', 'none', 'uav']
-model = CustomCNN(num_classes=5) 
+model = EfficientCNN(num_classes=5) 
 weights_path = "best_model.pth"
 model.load_state_dict(torch.load(weights_path, map_location=device))
+
+print("Параметры модели")
+for name, param in model.named_parameters():
+    print(f"{name}: {param.numel() * param.element_size() / 1024**2:.2f} MB")
 
 # Трансформации
 transform = transforms.Compose([
@@ -191,7 +196,7 @@ def main(video_path):
             xy, wh = p
             x,y = xy
             w,h = wh
-            cap_img = frame[int(y-h):int(y+h), int(x-w):int(x+w)]
+            cap_img = frame[int(y-h-PADDING):int(y+h+PADDING), int(x-w-PADDING):int(x+w+PADDING)]
 
             # Конвертируем OpenCV -> PIL
             cap_img_rgb = cv2.cvtColor(cap_img, cv2.COLOR_BGR2RGB)  # BGR -> RGB

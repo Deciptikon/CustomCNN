@@ -10,10 +10,10 @@ import random
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 
-from CustomCNN import CustomCNN
+from CustomCNN import CustomCNN, EfficientCNN
 
 # 1. Подготовка модели
-model = CustomCNN(num_classes=5) 
+model = EfficientCNN(num_classes=5) 
 
 # 2. Подготовка данных
 def random_pixelate(img):
@@ -222,6 +222,10 @@ if True:
 print("Классы в данных:", len(test_data.classes), test_data.classes)
 print("Выходов у модели:", model.fc.out_features)  # Для CNN
 #print(model) 
+
+print("Параметры модели")
+for name, param in model.named_parameters():
+    print(f"{name}: {param.numel() * param.element_size() / 1024**2:.2f} MB")
 
 plot_confusion_matrix(model, test_loader, test_data.classes)
 plot_image_confusion_matrix(model, test_loader, test_data.classes)
